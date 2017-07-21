@@ -1,12 +1,32 @@
 # zmq-proxy
 
-A simple command-line wrapper around `zmq::proxy`.
+A simple command-line wrapper around `zmq::proxy` and basic sockets.
 
-Example:
+Examples (adapted from zguide):
+
+- hwclient:
 ```
-$ zmq-proxy ROUTER tcp://*:5559 DEALER tcp://*:5560
+$ yes hello | zmq req connect tcp://localhost:5555
 ```
 
-(This example implements the msgqueue example from zguide.)
+- hwserver:
+```
+$ yes world | zmq rep bind tcp://*:5555
+```
 
-Available socket types: `ROUTER`, `DEALER`, `XPUB`, `XSUB`.
+- wuserver (simplified):
+```
+$ yes "zipcode temperature relhumidity" | zmq pub bind tcp://*:5556
+```
+
+- wuclient (simplified):
+```
+$ zmq sub connect tcp://localhost:5556 zipcode
+```
+
+- msgqueue:
+```
+$ zmq proxy router tcp://*:5559 dealer tcp://*:5560
+```
+
+Available socket types for proxy: `router`, `dealer`, `xpub`, `xsub`.
