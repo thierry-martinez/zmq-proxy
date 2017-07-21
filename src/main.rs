@@ -18,16 +18,15 @@ fn socket_type_of_str(s: &str) -> Result<zmq::SocketType, String> {
 }
 
 fn parse_cmdline() -> Result<CmdlineArgs, String> {
-    let frontend_kind = socket_type_of_str(
-        &std::env::args().nth(1).ok_or("Missing frontend kind")?)?;
-    let frontend_address =
-        std::env::args().nth(2).ok_or("Missing frontend address")?;
-    let backend_kind = socket_type_of_str(
-        &std::env::args().nth(3).ok_or("Missing backend kind")?)?;
-    let backend_address =
-        std::env::args().nth(4).ok_or("Missing backend address")?;
     Ok (CmdlineArgs {
-        frontend_kind, frontend_address, backend_kind, backend_address
+        frontend_kind: socket_type_of_str(
+            &std::env::args().nth(1).ok_or("Missing frontend kind")?)?,
+        frontend_address:
+            std::env::args().nth(2).ok_or("Missing frontend address")?,
+        backend_kind: socket_type_of_str(
+            &std::env::args().nth(3).ok_or("Missing backend kind")?)?,
+        backend_address:
+            std::env::args().nth(4).ok_or("Missing backend address")?,
     })
 }
 
