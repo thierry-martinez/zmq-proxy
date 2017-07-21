@@ -1,0 +1,7 @@
+[package]
+name = "zmq-proxy"
+version = "0.1.0"
+authors = ["Thierry Martinez <thierry.martinez@inria.fr>"]
+
+[dependencies]
+zmq = "0.8"
