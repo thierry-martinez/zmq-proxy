@@ -8,6 +8,7 @@ enum ConnectOrBind {
 }
 
 struct Service {
+    separator: Option<String>,
     connect_or_bind: ConnectOrBind,
     address: String,
 }
@@ -51,9 +52,19 @@ fn socket_type_of_str(s: &str) -> Result<zmq::SocketType, String> {
 }
 
 fn parse_service_args(args: &mut std::env::Args) -> Result<Service, String> {
-    Ok(Service {
-        connect_or_bind: connect_or_bind_of_str(
-            &args.next().ok_or("Missing connect or bind")?)?,
+    let arg = &args.next().ok_or("Missing connect or bind or --multi-message")?;
+    let (separator, connect_or_bind) =
+        if arg == "--multi-message" {
+            (Some(args.next().ok_or("Missing separator")?),
+             connect_or_bind_of_str(
+                 &args.next().ok_or("Missing connect or bind")?)?)
+        }
+        else {
+            (None, connect_or_bind_of_str(arg)?)
+        };
+    Ok (Service {
+        separator: separator,
+        connect_or_bind: connect_or_bind,
         address: args.next().ok_or("Missing address")?,
     })
 }
@@ -97,7 +108,7 @@ fn parse_cmdline() -> Result<CmdlineArgs, String> {
     Ok(res)
 }
 
-fn connect_or_bind(socket: &zmq::Socket, service: Service) ->
+fn connect_or_bind(socket: &zmq::Socket, service: &Service) ->
     Result<(), String> {
     match service.connect_or_bind {
         ConnectOrBind::Connect => socket.connect(&service.address)
@@ -107,13 +118,62 @@ fn connect_or_bind(socket: &zmq::Socket, service: Service) ->
     }
 }
 
+fn send_line(socket: &zmq::Socket, line: &str, separator: &Option<String>) {
+    match separator {
+        &None => socket.send_str(line, 0).unwrap(),
+        &Some(ref separator) => {
+            let msgs = line
+                .split(separator)
+                .map(|s| s.bytes().collect())
+                .collect::<Vec<Vec<u8>>>();
+            let msgs = msgs
+                .iter()
+                .map(|x| x.as_slice())
+                .collect::<Vec<&[u8]>>();
+            socket.send_multipart(msgs.as_slice(), 0).unwrap();
+        }
+    }
+}
+
+fn receive_message(socket: &zmq::Socket, separator: &Option<String>) {
+    let msgs = socket.recv_multipart(0).unwrap();
+    if msgs.len() == 1 {
+        println!("{}", String::from_utf8_lossy(&msgs[0]))
+    }
+    else {
+        match separator {
+            &None => {
+                println!("BEGIN MULTIPART MESSAGE");
+                for msg in msgs {
+                    println!("{}", String::from_utf8_lossy(&msg))
+                }
+                println!("END MULTIPART MESSAGE");
+            }
+            &Some(ref separator) => {
+                let mut iter = msgs.iter();
+                match iter.next() {
+                    None => (),
+                    Some(msg) => {
+                        print!("{}", String::from_utf8_lossy(&msg));
+                        for msg in iter {
+                            print!("{}", &separator);
+                            print!("{}", String::from_utf8_lossy(&msg));
+                        }
+                        println!("");
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn run_pub(ctx: zmq::Context, args: Service) ->
     Result<(), String> {
     let socket = ctx.socket(zmq::PUB).unwrap();
-    connect_or_bind(&socket, args)?;
+    connect_or_bind(&socket, &args)?;
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
-        socket.send_str(&line.unwrap(), 0).unwrap();
+        send_line(&socket, &line.unwrap(), &args.separator);
     }
     Ok(())
 }
@@ -121,21 +181,21 @@ fn run_pub(ctx: zmq::Context, args: Service) ->
 fn run_sub(ctx: zmq::Context, args: Sub) ->
     Result<(), String> {
     let socket = ctx.socket(zmq::SUB).unwrap();
-    connect_or_bind(&socket, args.service)?;
+    connect_or_bind(&socket, &args.service)?;
     socket.set_subscribe(args.filter.as_bytes()).unwrap();
     loop {
-        println!("{}", socket.recv_string(0).unwrap().unwrap());
+        receive_message(&socket, &args.service.separator);
     }
 }
 
 fn run_req(ctx: zmq::Context, args: Service) ->
     Result<(), String> {
     let socket = ctx.socket(zmq::REQ).unwrap();
-    connect_or_bind(&socket, args)?;
+    connect_or_bind(&socket, &args)?;
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
-        socket.send_str(&line.unwrap(), 0).unwrap();
-        println!("{}", socket.recv_string(0).unwrap().unwrap());
+        send_line(&socket, &line.unwrap(), &args.separator);
+        receive_message(&socket, &args.separator);
     }
     Ok(())
 }
@@ -143,12 +203,12 @@ fn run_req(ctx: zmq::Context, args: Service) ->
 fn run_rep(ctx: zmq::Context, args: Service) ->
     Result<(), String> {
     let socket = ctx.socket(zmq::REP).unwrap();
-    connect_or_bind(&socket, args)?;
-    println!("{}", socket.recv_string(0).unwrap().unwrap());
+    connect_or_bind(&socket, &args)?;
+    receive_message(&socket, &args.separator);
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
-        socket.send_str(&line.unwrap(), 0).unwrap();
-        println!("{}", socket.recv_string(0).unwrap().unwrap());
+        send_line(&socket, &line.unwrap(), &args.separator);
+        receive_message(&socket, &args.separator);
     }
     Ok(())
 }
@@ -167,8 +227,8 @@ fn main() {
     let args = parse_cmdline().unwrap_or_else(|msg| {
         println!("{}", msg);
         println!("Usage:
-zmq [pub|req|rep] <connect|bind> <address>
-zmq sub <connect|bind> <address> <filter>
+zmq pub|sub|req|rep [--multi-message <sep char>] <connect|bind> <address>
+zmq sub [--multi-message <sep char>] <connect|bind> <address> <filter>
 zmq proxy <frontend kind> <address> <backend kind> <address>");
         std::process::exit(1);
     });
