@@ -52,9 +52,9 @@ fn socket_type_of_str(s: &str) -> Result<zmq::SocketType, String> {
 }
 
 fn parse_service_args(args: &mut std::env::Args) -> Result<Service, String> {
-    let arg = &args.next().ok_or("Missing connect or bind or --multi-message")?;
+    let arg = &args.next().ok_or("Missing connect or bind or --multipart-separator")?;
     let (separator, connect_or_bind) =
-        if arg == "--multi-message" {
+        if arg == "--multipart-separator" {
             (Some(args.next().ok_or("Missing separator")?),
              connect_or_bind_of_str(
                  &args.next().ok_or("Missing connect or bind")?)?)
@@ -227,8 +227,8 @@ fn main() {
     let args = parse_cmdline().unwrap_or_else(|msg| {
         println!("{}", msg);
         println!("Usage:
-zmq pub|sub|req|rep [--multi-message <sep char>] <connect|bind> <address>
-zmq sub [--multi-message <sep char>] <connect|bind> <address> <filter>
+zmq pub|sub|req|rep [--multipart-separator <char>] <connect|bind> <address>
+zmq sub [--multipart-separator <char>] <connect|bind> <address> <filter>
 zmq proxy <frontend kind> <address> <backend kind> <address>");
         std::process::exit(1);
     });
